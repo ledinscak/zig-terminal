@@ -10,9 +10,11 @@ pub const Terminal = struct {
 
     file: std.fs.File,
     writer_impl: Writer,
+    original_termios: ?std.posix.termios = null,
 
     pub const Writer = std.fs.File.Writer;
     pub const WriteError = std.Io.Writer.Error;
+    pub const RawModeError = std.posix.TermiosGetError || std.posix.TermiosSetError;
 
     pub const Size = struct {
         width: u16,
@@ -74,16 +76,25 @@ pub const Terminal = struct {
     }
 
     // -------------------------------------------------------------------------
+    // Private Helpers
+    // -------------------------------------------------------------------------
+
+    /// Write ANSI escape sequence (CSI). Comptime string concatenation for zero overhead.
+    inline fn ansi(self: *Self, comptime code: []const u8) WriteError!void {
+        try self.writer().writeAll("\x1b[" ++ code);
+    }
+
+    // -------------------------------------------------------------------------
     // Cursor Control
     // -------------------------------------------------------------------------
 
     pub fn hideCursor(self: *Self) WriteError!void {
-        try self.writer().writeAll("\x1b[?25l");
+        try self.ansi("?25l");
         try self.flush();
     }
 
     pub fn showCursor(self: *Self) WriteError!void {
-        try self.writer().writeAll("\x1b[?25h");
+        try self.ansi("?25h");
         try self.flush();
     }
 
@@ -92,7 +103,7 @@ pub const Terminal = struct {
     }
 
     pub fn moveToOrigin(self: *Self) WriteError!void {
-        try self.writer().writeAll("\x1b[H");
+        try self.ansi("H");
     }
 
     // -------------------------------------------------------------------------
@@ -100,11 +111,87 @@ pub const Terminal = struct {
     // -------------------------------------------------------------------------
 
     pub fn clear(self: *Self) WriteError!void {
-        try self.writer().writeAll("\x1b[2J");
+        try self.ansi("2J");
     }
 
     pub fn clearLine(self: *Self) WriteError!void {
-        try self.writer().writeAll("\x1b[2K");
+        try self.ansi("2K");
+    }
+
+    /// Enable alternate screen buffer. Content is restored when disabled.
+    pub fn enableAltScreen(self: *Self) WriteError!void {
+        try self.ansi("?1049h");
+        try self.flush();
+    }
+
+    /// Disable alternate screen buffer and restore original content.
+    pub fn disableAltScreen(self: *Self) WriteError!void {
+        try self.ansi("?1049l");
+        try self.flush();
+    }
+
+    // -------------------------------------------------------------------------
+    // Raw Mode
+    // -------------------------------------------------------------------------
+
+    /// Enable raw mode: disable input buffering, echo, and signal handling.
+    /// Call disableRawMode() to restore original settings.
+    pub fn enableRawMode(self: *Self) RawModeError!void {
+        const fd = self.file.handle;
+
+        // Save original settings
+        self.original_termios = try std.posix.tcgetattr(fd);
+
+        var raw = self.original_termios.?;
+
+        // Input: disable break, CR to NL, parity check, strip, flow control
+        raw.iflag.BRKINT = false;
+        raw.iflag.ICRNL = false;
+        raw.iflag.INPCK = false;
+        raw.iflag.ISTRIP = false;
+        raw.iflag.IXON = false;
+
+        // Output: disable post-processing
+        raw.oflag.OPOST = false;
+
+        // Control: set 8-bit chars
+        raw.cflag.CSIZE = .CS8;
+
+        // Local: disable echo, canonical mode, signals, extended input
+        raw.lflag.ECHO = false;
+        raw.lflag.ICANON = false;
+        raw.lflag.IEXTEN = false;
+        raw.lflag.ISIG = false;
+
+        // Read returns after 1 byte, no timeout
+        raw.cc[@intFromEnum(std.posix.V.MIN)] = 1;
+        raw.cc[@intFromEnum(std.posix.V.TIME)] = 0;
+
+        try std.posix.tcsetattr(fd, .FLUSH, raw);
+    }
+
+    /// Restore original terminal settings.
+    pub fn disableRawMode(self: *Self) RawModeError!void {
+        if (self.original_termios) |termios| {
+            try std.posix.tcsetattr(self.file.handle, .FLUSH, termios);
+            self.original_termios = null;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Colors (True Color / 24-bit RGB)
+    // -------------------------------------------------------------------------
+
+    pub fn setFg(self: *Self, r: u8, g: u8, b: u8) WriteError!void {
+        try self.writer().print("\x1b[38;2;{};{};{}m", .{ r, g, b });
+    }
+
+    pub fn setBg(self: *Self, r: u8, g: u8, b: u8) WriteError!void {
+        try self.writer().print("\x1b[48;2;{};{};{}m", .{ r, g, b });
+    }
+
+    pub fn resetColors(self: *Self) WriteError!void {
+        try self.ansi("0m");
     }
 
     // -------------------------------------------------------------------------
