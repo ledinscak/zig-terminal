@@ -1,8 +1,15 @@
 //! zig-terminal: A simple terminal I/O library for Zig
 //!
-//! Provides buffered terminal output with ANSI escape sequence support.
+//! Provides buffered terminal output with ANSI escape sequence support,
+//! text styling, and keyboard input handling.
 
-pub const Terminal = @import("terminal.zig").Terminal;
+const terminal = @import("terminal.zig");
+
+pub const Terminal = terminal.Terminal;
+pub const Key = terminal.Terminal.Key;
+pub const Size = terminal.Terminal.Size;
+pub const Position = terminal.Terminal.Position;
+pub const Color = terminal.Terminal.Color;
 
 test {
     @import("std").testing.refAllDecls(@This());
