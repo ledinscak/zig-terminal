@@ -10,6 +10,8 @@ pub const Key = terminal.Terminal.Key;
 pub const Size = terminal.Terminal.Size;
 pub const Position = terminal.Terminal.Position;
 pub const Color = terminal.Terminal.Color;
+pub const MouseButton = terminal.Terminal.MouseButton;
+pub const MouseEvent = terminal.Terminal.MouseEvent;
 
 test {
     @import("std").testing.refAllDecls(@This());

@@ -13,6 +13,7 @@ pub const Terminal = struct {
 
     writer_impl: Writer,
     original_termios: ?std.posix.termios = null,
+    mouse_enabled: bool = false,
 
     pub const Writer = std.fs.File.Writer;
     pub const WriteError = std.Io.Writer.Error;
@@ -55,7 +56,24 @@ pub const Terminal = struct {
         bright_white = 15,
     };
 
-    /// Keyboard input representation
+    /// Mouse button types
+    pub const MouseButton = enum {
+        left,
+        right,
+        middle,
+        scroll_up,
+        scroll_down,
+    };
+
+    /// Mouse event with button, position, and press/release state
+    pub const MouseEvent = struct {
+        button: MouseButton,
+        row: u16,
+        col: u16,
+        pressed: bool,
+    };
+
+    /// Input event representation (keyboard or mouse)
     pub const Key = union(enum) {
         char: u8,
         escape,
@@ -84,6 +102,7 @@ pub const Terminal = struct {
         f10,
         f11,
         f12,
+        mouse: MouseEvent,
     };
 
     pub const InitError = error{
@@ -104,6 +123,9 @@ pub const Terminal = struct {
     }
 
     pub fn close(self: *Self) void {
+        if (self.mouse_enabled) {
+            self.disableMouse() catch {};
+        }
         self.disableRawMode() catch {};
         self.disableAltScreen() catch {};
         self.showCursor() catch {};
@@ -224,6 +246,27 @@ pub const Terminal = struct {
     pub fn disableAltScreen(self: *Self) WriteError!void {
         try self.ansi("?1049l");
         try self.flush();
+    }
+
+    // -------------------------------------------------------------------------
+    // Mouse
+    // -------------------------------------------------------------------------
+
+    /// Enable mouse tracking (SGR extended mode).
+    /// Reports left/right/middle clicks and scroll wheel with coordinates.
+    pub fn enableMouse(self: *Self) WriteError!void {
+        try self.ansi("?1000h"); // Enable basic mouse tracking
+        try self.ansi("?1006h"); // Enable SGR extended mode
+        try self.flush();
+        self.mouse_enabled = true;
+    }
+
+    /// Disable mouse tracking.
+    pub fn disableMouse(self: *Self) WriteError!void {
+        try self.ansi("?1006l"); // Disable SGR extended mode
+        try self.ansi("?1000l"); // Disable basic mouse tracking
+        try self.flush();
+        self.mouse_enabled = false;
     }
 
     // -------------------------------------------------------------------------
@@ -472,7 +515,7 @@ pub const Terminal = struct {
 
     /// Parse CSI sequence (ESC [ ...)
     fn parseCsiSequence(fds: *[1]std.posix.pollfd) ?Key {
-        var seq_buf: [8]u8 = undefined;
+        var seq_buf: [16]u8 = undefined;
         var seq_len: usize = 0;
 
         // Read sequence bytes until we get a final character (letter or ~)
@@ -494,6 +537,11 @@ pub const Terminal = struct {
         if (seq_len == 0) return null;
 
         const seq = seq_buf[0..seq_len];
+
+        // SGR mouse sequence: ESC [ < button ; x ; y M/m
+        if (seq[0] == '<' and (seq[seq_len - 1] == 'M' or seq[seq_len - 1] == 'm')) {
+            return parseSgrMouse(seq);
+        }
 
         // Single letter sequences (arrows, home, end)
         if (seq_len == 1) {
@@ -531,6 +579,49 @@ pub const Terminal = struct {
         }
 
         return null;
+    }
+
+    /// Parse SGR mouse sequence: < button ; x ; y M/m
+    fn parseSgrMouse(seq: []const u8) ?Key {
+        if (seq.len < 6) return null; // Minimum: <0;1;1M
+
+        const pressed = seq[seq.len - 1] == 'M';
+        const params = seq[1 .. seq.len - 1]; // Skip '<' and final char
+
+        // Parse semicolon-separated values: button;x;y
+        var parts: [3]u32 = .{ 0, 0, 0 };
+        var part_idx: usize = 0;
+        for (params) |c| {
+            if (c == ';') {
+                part_idx += 1;
+                if (part_idx >= 3) return null;
+            } else if (c >= '0' and c <= '9') {
+                parts[part_idx] = parts[part_idx] * 10 + (c - '0');
+            }
+        }
+
+        const button_code = parts[0];
+        const col = parts[1];
+        const row = parts[2];
+
+        // Decode button (SGR mode codes)
+        const button: MouseButton = switch (button_code) {
+            0 => .left,
+            1 => .middle,
+            2 => .right,
+            64 => .scroll_up,
+            65 => .scroll_down,
+            else => return null,
+        };
+
+        return .{
+            .mouse = .{
+                .button = button,
+                .row = @intCast(if (row > 0) row - 1 else 0), // Convert to 0-indexed
+                .col = @intCast(if (col > 0) col - 1 else 0),
+                .pressed = pressed,
+            },
+        };
     }
 
     /// Parse SS3 sequence (ESC O ...) - F1-F4 keys

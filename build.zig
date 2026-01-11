@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
 
     // Examples
     const examples_step = b.step("examples", "Build all examples");
-    for ([_][]const u8{ "colors", "cursor", "scroll", "styles" }) |name| {
+    for ([_][]const u8{ "colors", "cursor", "mouse", "scroll", "styles" }) |name| {
         addExample(b, examples_step, terminal_mod, target, optimize, name);
     }
 

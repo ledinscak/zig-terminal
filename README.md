@@ -153,7 +153,7 @@ Available colors: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, 
 
 | Method | Description |
 |--------|-------------|
-| `pollKey()` | Non-blocking key poll, returns `?Key` |
+| `pollKey()` | Non-blocking input poll, returns `?Key` |
 
 The `Key` union handles:
 - `.char` - Regular character (access with `key.char`)
@@ -161,13 +161,38 @@ The `Key` union handles:
 - `.arrow_up`, `.arrow_down`, `.arrow_left`, `.arrow_right`
 - `.home`, `.end`, `.page_up`, `.page_down`, `.insert`, `.delete`
 - `.f1` through `.f12`
+- `.mouse` - Mouse event (access with `key.mouse`)
+
+### Mouse
+
+| Method | Description |
+|--------|-------------|
+| `enableMouse()` | Enable mouse tracking (SGR extended mode) |
+| `disableMouse()` | Disable mouse tracking |
+
+Mouse events are returned through `pollKey()` as `.mouse` variants:
+
+```zig
+if (t.pollKey()) |key| {
+    switch (key) {
+        .mouse => |m| {
+            // m.button: .left, .right, .middle, .scroll_up, .scroll_down
+            // m.row, m.col: 0-indexed position
+            // m.pressed: true for press, false for release
+        },
+        else => {},
+    }
+}
+```
 
 ### Types
 
 - `Terminal.Size` - `{ width: u16, height: u16 }` with `center(content_width)` helper
 - `Terminal.Position` - `{ row: u16, col: u16 }`
 - `Terminal.Color` - Enum of 16 ANSI colors
-- `Terminal.Key` - Union for keyboard input
+- `Terminal.Key` - Union for keyboard and mouse input
+- `Terminal.MouseButton` - Enum: `left`, `right`, `middle`, `scroll_up`, `scroll_down`
+- `Terminal.MouseEvent` - `{ button: MouseButton, row: u16, col: u16, pressed: bool }`
 
 ## Building
 
@@ -185,6 +210,7 @@ zig build examples     # Build all examples
 zig build run-colors   # 16 ANSI color palette
 zig build run-styles   # Text attributes demo
 zig build run-cursor   # Cursor movement (interactive)
+zig build run-mouse    # Mouse input (interactive)
 zig build run-scroll   # Scroll regions (interactive)
 ```
 
