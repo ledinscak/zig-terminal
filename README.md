@@ -169,16 +169,23 @@ The `Key` union handles:
 - `Terminal.Color` - Enum of 16 ANSI colors
 - `Terminal.Key` - Union for keyboard input
 
-## Examples
-
-Build and run examples:
+## Building
 
 ```bash
-zig build examples          # Build all
-zig build run-colors        # 16 ANSI color palette
-zig build run-styles        # Text attributes demo
-zig build run-cursor        # Cursor movement demo (interactive)
-zig build run-scroll        # Scroll regions demo (interactive)
+zig build              # Build the library
+zig build test         # Run unit tests
+zig build check        # Check code formatting
+zig build clean        # Remove build artifacts
+```
+
+## Examples
+
+```bash
+zig build examples     # Build all examples
+zig build run-colors   # 16 ANSI color palette
+zig build run-styles   # Text attributes demo
+zig build run-cursor   # Cursor movement (interactive)
+zig build run-scroll   # Scroll regions (interactive)
 ```
 
 ## Requirements
